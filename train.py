@@ -3,16 +3,18 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from torchvision.datasets import MNIST
-from torchvision.transforms import Compose, ToTensor, Normalize
+from torchvision.transforms import Compose, ToTensor, Normalize, Resize
 from torch.utils.data import DataLoader
+import torchvision.utils as vutils
 import torch.utils.tensorboard as tb
 
-from models import Generator, Discriminator
+from models import Generator, Discriminator, weights_init
 
-batch_size = 128
+batch_size = 64
 latent_dims = 128
 train_logger = tb.SummaryWriter('logs', flush_secs=1)
-transform=Compose([ToTensor(),
+transform=Compose([Resize(64),
+                    ToTensor(),
                    Normalize((0.5,), (0.5,))])           
 dataset = MNIST('data/', download=True, transform=transform)
 train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=12)
@@ -20,18 +22,23 @@ train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_work
 #test_loader = DataLoader(dataset, batch_size=64)   
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 generator = Generator().to(device)
-discriminator = Discriminator().to(device) 
-loss = nn.BCEWithLogitsLoss()
-optimizerG = torch.optim.Adam(generator.parameters(), lr=1e-3, betas=(0.9, 0.999))
-optimizerD = torch.optim.Adam(discriminator.parameters(), lr=1e-3, betas=(0.9, 0.999))
+# generator.apply(weights_init)
+discriminator = Discriminator().to(device)
+# discriminator.apply(weights_init) 
+loss = nn.BCELoss()
+optimizerG = torch.optim.Adam(generator.parameters(), lr=2e-4, betas=(0.9, 0.999))
+optimizerD = torch.optim.Adam(discriminator.parameters(), lr=2e-4, betas=(0.9, 0.999))
+one = 1
+zero = 0
+test_vector = torch.randn([batch_size, latent_dims, 1,1], device=device)
 fig = plt.figure()
 global_step = 0
-for epoch in range(64):
+for epoch in range(256):
     for idx, (images,_) in enumerate(train_loader):
         images = images.to(device)
         discriminator.zero_grad()
         batch_size = images.shape[0]
-        labels = torch.ones((batch_size,), device=device)
+        labels = torch.full((batch_size,), one, dtype=images.dtype, device=device)
         outD = discriminator(images)
         errD = loss(outD, labels)
         errD.backward()
@@ -39,7 +46,7 @@ for epoch in range(64):
         
         z = torch.randn([batch_size, latent_dims, 1,1], device=device)
         gen = generator(z)
-        labels.zero_()
+        labels.fill_(zero)
         outF = discriminator(gen.detach())
         errF = loss(outF, labels)
         errF.backward()
@@ -48,19 +55,24 @@ for epoch in range(64):
         optimizerD.step()
         
         generator.zero_grad()
-        labels = torch.ones((batch_size,), device=device)
+        labels.fill_(one)
         outD2 = discriminator(gen)
         errG = loss(outD2, labels)
         errG.backward()
         Dz2 = outD2.mean().item()
         optimizerG.step()
-        if epoch % 8 == 0 and idx == 0:
-            for i in range(8):
-                z =  torch.randn([1,latent_dims,1,1], device=device)
-                image = generator(z)  
-                ax = fig.add_subplot(8,8,8*(epoch//8) + i + 1)
-                ax.imshow(image.detach().cpu().numpy().reshape(28,28),cmap='gray')
-                ax.axis('off')
+        # if epoch % 8 == 0 and idx == 0:
+        #     for i in range(8):
+        #         z_test = torch.randn([1, 128, 1, 1]).to(device)
+        #         gen_test = generator(z_test) 
+        #         ax = fig.add_subplot(8,8,8*(epoch//8) + i + 1)
+        #         ax.imshow(gen_test.detach().cpu().numpy().reshape(64,64),cmap='gray')
+        #         ax.axis('off')
+        if idx==0:
+            image = generator(test_vector)
+            vutils.save_image(image.detach(),
+                    'output/fake_samples_epoch_%03d.png' % (epoch),
+                    normalize=True)
         
         train_logger.add_scalar('discriminator_loss', errD.item(), global_step=global_step)
         train_logger.add_scalar('generator_loss', errG.item(), global_step=global_step)

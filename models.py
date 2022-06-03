@@ -14,7 +14,7 @@ class Generator(nn.Module):
         def forward(self, x):
             return self.net(x)
             
-    def __init__(self):
+    def __init__(self, nc=1):
         super().__init__()
         self.up1 = self.UpBlock(128, 128, stride=1, padding=0)
         self.up1.apply(weights_init)
@@ -24,7 +24,7 @@ class Generator(nn.Module):
         self.up3.apply(weights_init)
         self.up4 = self.UpBlock(32,16)
         self.up4.apply(weights_init)
-        self.up5 = nn.ConvTranspose2d(16,1,kernel_size=4,stride=2,padding=1,bias=False)
+        self.up5 = nn.ConvTranspose2d(16,nc,kernel_size=4,stride=2,padding=1,bias=False)
         self.up5.apply(weights_init)
         self.activ = nn.Tanh()
 
@@ -57,9 +57,9 @@ class Discriminator(nn.Module):
         def forward(self, x):
             return self.net(x)
             
-    def __init__(self):
+    def __init__(self, nc=1):
         super().__init__()
-        self.down1 = self.DownBlock(1, 16, stride=2)
+        self.down1 = self.DownBlock(nc, 16, stride=2)
         self.down1.apply(weights_init)
         self.down3 = self.DownBlock(16, 32, 2)
         self.down3.apply(weights_init)
@@ -93,7 +93,7 @@ def weights_init(m):
         torch.nn.init.zeros_(m.bias)
 
 if __name__ == '__main__':
-    model = Generator()
+    model = Generator(3)
     z = torch.randn([32,128,1,1])
     print(model(z).shape)
     
